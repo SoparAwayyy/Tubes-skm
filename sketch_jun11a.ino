@@ -6,7 +6,7 @@
 
 #define RST_PIN A3
 #define SS_PIN 10
-#define servo_pin A0
+#define SERVO_PIN A0
 const byte ROWS = 4;
 const byte COLS = 4;
 
@@ -28,9 +28,15 @@ Keypad keypad = Keypad(makeKeymap(customKeymap), rowPins, colPins, ROWS, COLS);
 char password[] = "1234";
 char enteredPassword[5];
 int passwordIndex = 0;
-int attemptsLeft = 3;  // Jumlah kesempatan yang diberikan kepada pengguna
+int attemptsLeft = 3;
 bool passwordMode = false;
 bool systemActive = false;
+
+byte authorizedUID[][4] = {
+  {0x68, 0x31, 0x4A, 0x53},
+};
+
+const int authorizedUIDCount = sizeof(authorizedUID)/sizeof(authorizedUID[0]);
 
 void setup() {
   Serial.begin(115200);
@@ -46,7 +52,7 @@ void setup() {
   lcd.setCursor(0, 0);
   lcd.print("Tekan * untuk memulai");
 
-  myServo.attach(servo_pin);
+  myServo.attach(SERVO_PIN);
   myServo.write(0);
 }
 
@@ -78,19 +84,37 @@ void readRFID() {
   if (mfrc522.PICC_IsNewCardPresent()) {
     if (mfrc522.PICC_ReadCardSerial()) {
       mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Kartu terbaca");
-      lcd.setCursor(0, 1);
-      lcd.print("Password: ");
+      if (isAuthorized(mfrc522.uid.uidByte)) {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Kartu terbaca");
+        lcd.setCursor(0, 1);
+        lcd.print("Password: ");
 
-      passwordMode = true;
-      passwordIndex = 0;
-      memset(enteredPassword, 0, sizeof(enteredPassword));
-    } else {
-      handleRFIDError();
+        passwordMode = true;
+        passwordIndex = 0;
+        memset(enteredPassword, 0, sizeof(enteredPassword));
+      } else {
+        handleRFIDError();
+      }
     }
   }
+}
+
+bool isAuthorized(byte* uid) {
+  for (int i = 0; i < authorizedUIDCount; i++) {
+    bool match = true;
+    for (int j = 0; j < mfrc522.uid.size; j++) {
+      if (uid[j] != authorizedUID[i][j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void handleRFIDError() {
@@ -163,7 +187,6 @@ void checkPassword() {
   }
 }
 
-
 void unlockDoor() {
   delay(1000);
   Serial.println("Menggerakkan Servo ke posisi terbuka (90)");
@@ -173,7 +196,6 @@ void unlockDoor() {
   Serial.println("Menggerakkan Servo kembali ke posisi tertutup (0)");
   myServo.write(0);
 
-  // Tambahkan delay untuk memberi waktu servo kembali ke posisi awal sebelum keluar dari sistem
   delay(1000);
 }
 
@@ -194,5 +216,4 @@ void resetPasswordInput() {
   lcd.print("Password: ");
   passwordIndex = 0;
   memset(enteredPassword, 0, sizeof(enteredPassword));
-
 }
